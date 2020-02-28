@@ -10,10 +10,10 @@
 - execute ```bixel.init()``` with options described below
 
 ## Direct
-- include ```<script src="https://rawgit.com/rcslabs/bixel/master/bixel.js"></script>``` in your html file
+- include ```  <script src="https://cdn.jsdelivr.net/gh/luxms/bixel@master/bixel.js"></script>``` in your html file
 
 ## Using Bower
-- run ```bower install git://github.com/rcslabs/bixel```
+- run ```bower install git://github.com/luxms/bixel```
 - include ```<script src="bower_components/bixel/bixel.js"></script>``` in your html file
 
 ## Using require.js
