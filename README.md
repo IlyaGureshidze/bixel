@@ -29,9 +29,13 @@ bixel.init({optional config})
 Must execute this function when frame is ready to receive message
 
 Config (optional):
-- locationsCount - number of requested locations
-- metricsCount - number of requested metrics
-- periodsCount - number of requested periods
+- `locationsCount: string` - number of requested locations
+- `metricsCount: string` - number of requested metrics
+- `periodsCount: string` - number of requested periods
+- `xsCount: string` number of entities of x-axis (e.g. periods, locations, metrics - one projected on x axis)
+- `ysCount: string` number of entities of y-axis
+- `zsCount: string` number of entities of z-axis
+- `saveAbilities: string[]` - array of file extensions that vizel can be saved to
 
 If none expliced then all selected will be provided
 
@@ -58,6 +62,7 @@ eventName is string and can be one of:
 - `no-data`- will receive this event when the data is empty if either there is
    no selection in ui panes or no data on server side. A callback will have
    `Axis` object as the only argument
+- `save` - when user click on save button
 
 ## Axis object
 provides methods:

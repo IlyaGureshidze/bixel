@@ -167,7 +167,7 @@
   //
   // register handlers
   //
-  _server.addMessageListener('LOAD', function (payload) {    
+  _server.addMessageListener('LOAD', function (payload) {
     _onLoad(payload.data, payload.axes || payload.axis);        // TODO: + norms
                                                                 // axis - deprecated
   });
@@ -399,6 +399,19 @@
       return _server.send(messageType, opt);
     },
     on: function on(evtType, fn) {
+      if (evtType !== 'load' && evtType !== 'loading' && evtType !== 'no-data') {
+        var messageType = evtType.toUpperCase().replace(/-/g, '_');
+        _server.addMessageListener(messageType, function (payload) {
+          try {
+            var result = fn(payload);
+            return {result: result};
+          } catch (err) {
+            console.error(err.stack);
+            throw err;
+          }
+        });
+        return bixel;
+      }
       var evtList = _events[evtType] || (_events[evtType] = []);
       evtList.push(fn);
       return bixel;
