@@ -243,9 +243,9 @@
     if (!axesOrder) {                         // deprecated: old BI versions may have axisOrder string
       var deprecatedOrder = axes.axisOrder;         // 'MLP', 'LMP', 'PML' ...   as z-y-x
       axesOrder = deprecatedOrder
-					.split('')
-					.map(function(axisLetter) { return ({'M': 'metrics', 'L': 'locations', 'P': 'periods'}[axisLetter] || '?')})
-					.reverse();
+          .split('')
+          .map(function(axisLetter) { return ({'M': 'metrics', 'L': 'locations', 'P': 'periods'}[axisLetter] || '?')})
+          .reverse();
     }
 
     var mh = {}, lh = {}, ph = {}, uh = {};
@@ -410,6 +410,7 @@
             throw err;
           }
         });
+        _server.send('SUBSCRIBE', { topic: evtType });                                              // register subscription
         return bixel;
       }
       var evtList = _events[evtType] || (_events[evtType] = []);
