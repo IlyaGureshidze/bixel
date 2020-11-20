@@ -20,6 +20,9 @@
   var Utils = {
     genUid: function () {
       return String(_msg_counter++);
+    },
+    isArray: function isArray(arg) {
+      return Object.prototype.toString.call(arg) === '[object Array]';
     }
   };
 
@@ -104,24 +107,24 @@
             delete _replyListeners[uid];
           }
 
-        } else {                                                  // got command
+        } else {                                                                                    // got command
           var succeeded = false;
           if (type in _listeners) {
-            _listeners[type].forEach(function (callback) {            // notify all command listeners
+            _listeners[type].forEach(function (callback) {                                          // notify all command listeners
               try {
-                msg.payload = callback(payload);
-                succeeded = true;                                     // if at least one handler is ok: send _OK
+                msg.payload = callback.apply(window, Utils.isArray(payload) ? payload : [payload]); // when payload is array, interpret it as array of arguments
+                succeeded = true;                                                                   // if at least one handler is ok: send _OK
               } catch (err) {
                 if (!succeeded) {
                   msg.payload = {
-                    message: err.message
+                    error: err.message
                   };
                 }
               }
             });
           } else {
             msg.payload = {
-              message: 'no handler'
+              error: 'no handler'
             };
           }
           msg.type += succeeded ? '_OK' : '_FAILED';
@@ -144,6 +147,19 @@
       }
       _listeners[type].push(listener);
     };
+
+    this.removeMessageListener = function (type, listener) {
+      if (!_listeners.hasOwnProperty(type)) {
+        return false;
+      }
+      let idx = _listeners[type].indexOf(listener);
+      if (idx === -1) {
+        return false;
+      }
+      _listeners[type].splice(idx, 1);
+      return true;
+    };
+
 
     /**
      * send message
@@ -395,26 +411,32 @@
   //
 
   var bixel = {
-    invoke: function(messageType, opt) {
+    invoke: function invoke(messageType, opt) {
       return _server.send(messageType, opt);
     },
     on: function on(evtType, fn) {
       if (evtType !== 'load' && evtType !== 'loading' && evtType !== 'no-data') {
         var messageType = evtType.toUpperCase().replace(/-/g, '_');
-        _server.addMessageListener(messageType, function (payload) {
-          try {
-            var result = fn(payload);
-            return {result: result};
-          } catch (err) {
-            console.error(err.stack);
-            throw err;
-          }
-        });
+        _server.addMessageListener(messageType, fn);
         _server.send('SUBSCRIBE', { topic: evtType });                                              // register subscription
         return bixel;
       }
       var evtList = _events[evtType] || (_events[evtType] = []);
       evtList.push(fn);
+      return bixel;
+    },
+    off: function off(evtType, fn) {
+      if (evtType !== 'load' && evtType !== 'loading' && evtType !== 'no-data') {
+        var messageType = evtType.toUpperCase().replace(/-/g, '_');
+        _server.removeMessageListener(messageType, fn);
+        // TODO: if no more listeners: unsubscribe
+        return bixel;
+      }
+      var evtList = _events[evtType] || (_events[evtType] = []);
+      var idx = evtList.indexOf(fn);
+      if (idx !== -1) {
+        evtList.splice(idx, 1);
+      }
       return bixel;
     },
     // helpers
