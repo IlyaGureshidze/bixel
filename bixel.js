@@ -2,9 +2,9 @@
 (function (name, definition) {
   var theModule = definition();
 
-  if (typeof define === 'function' && define.amd) {    // AMD
+  if (typeof define === 'function' && define.amd) {                                                 // AMD
     define(theModule);
-  } else if (typeof module !== 'undefined' && module.exports) {  // CommonJS
+  } else if (typeof module !== 'undefined' && module.exports) {                                     // CommonJS
     module.exports = theModule
   } else if (typeof window !== 'undefined') {
     window[name] = theModule;
@@ -13,16 +13,33 @@
 })('bixel', function (undefined) {
   "use strict";
 
-  var _msg_counter = 0;           // guid counter
-  var _events = {};               // user events by type
+  var _msgCounter = 0;                                                                              // guid counter
   var _server = new Server();
 
   var Utils = {
     genUid: function () {
-      return String(_msg_counter++);
+      return String(_msgCounter++);
     },
     isArray: function isArray(arg) {
       return Object.prototype.toString.call(arg) === '[object Array]';
+    },
+    formatNum: function formatNum(value, precision) {
+      if (undefined === null || value === null || value === '' || !isFinite(value)) return '';
+      if (precision === undefined) precision = 2;
+      var separator = ' ';
+      if (precision != -1) {
+        value = value.toFixed(precision);
+      }
+      var a = ('' + value).split('.');
+      a[0] = a[0]
+        .split('').reverse().join('')
+        .replace(/\d{3}(?=\d)/g, '$&' + separator)
+        .split('').reverse().join('');
+      if (a.length == 1) {
+        return a[0];
+      } else {
+        return (0 == parseInt(a[1], 10) ? a[0] : a.join('.'));
+      }
     }
   };
 
@@ -45,6 +62,12 @@
      */
     var _replyListeners = {};
 
+    /**
+     * Function that will be called after receiving a message of type
+     * @type {Object.<string, Function>}
+     * @private
+     */
+    var _messageInterceptors = {};
 
     if ((window !== undefined) && (window.parent !== window)) {
       if (window.addEventListener) {
@@ -58,7 +81,7 @@
       try {
         var srcWindow = event.source;
         if (srcWindow !== window.parent) {
-          return;                           // accept only messages from parent window
+          return;                                                                                   // accept only messages from parent window
         }
         _onMessage(event.data);
 
@@ -90,16 +113,23 @@
         var uid = msg.uid;
         var payload = msg.payload;
 
-        var isResponseOk = !!type.match(/^.*_OK$/);
-        var isResponseFailed = !!type.match(/^.*_FAILED$/);
+        var suffix = '';
+        if (type.match(/^(.*?)(_OK|_FAILED)?$/)) {
+          type = RegExp.$1;
+          suffix = RegExp.$2;
+        }
 
-        if (isResponseOk || isResponseFailed) {                   // got response
+        var isResponseOk = suffix === '_OK';
+        var isResponseFailed = suffix === '_FAILED';
+
+        if (isResponseOk || isResponseFailed) {                                                     // got response
           if (uid in _replyListeners) {
             try {
               var listenersPair = _replyListeners[uid];
               var listener = (isResponseOk) ? listenersPair[0] : listenersPair[1];
               if (typeof listener === 'function') {
-                listener(payload);
+                var args = _messageInterceptors[type] ? _messageInterceptors[type](payload) : payload;
+                listener(args);                                                                     // listener is Promise, we cannot pass many results, even if it is array
               }
             } catch (err) {
               console.log(err.stack);
@@ -110,9 +140,10 @@
         } else {                                                                                    // got command
           var succeeded = false;
           if (type in _listeners) {
-            _listeners[type].forEach(function (callback) {                                          // notify all command listeners
+            _listeners[type].forEach(function (listener) {                                          // notify all command listeners
               try {
-                msg.payload = callback.apply(window, Utils.isArray(payload) ? payload : [payload]); // when payload is array, interpret it as array of arguments
+                var args = _messageInterceptors[type] ? _messageInterceptors[type](payload) : payload;
+                msg.payload = listener.apply(window, Utils.isArray(args) ? args : [args]);          // when payload is array, interpret it as array of arguments
                 succeeded = true;                                                                   // if at least one handler is ok: send _OK
               } catch (err) {
                 if (!succeeded) {
@@ -128,7 +159,7 @@
             };
           }
           msg.type += succeeded ? '_OK' : '_FAILED';
-          _send(msg);                                                 // send response
+          _send(msg);                                                                               // send response
         }
 
       } catch (err) {
@@ -160,6 +191,9 @@
       return true;
     };
 
+    this.setInterceptor = function (type, fn) {
+      _messageInterceptors[type] = fn;
+    };
 
     /**
      * send message
@@ -180,56 +214,6 @@
     }
   }
 
-  //
-  // register handlers
-  //
-  _server.addMessageListener('LOAD', function (payload) {
-    _onLoad(payload.data, payload.axes || payload.axis);        // TODO: + norms
-                                                                // axis - deprecated
-  });
-  _server.addMessageListener('LOADING', function (payload) {
-    _onLoading(payload.axes || payload.axis);                   // axis - deprecated
-  });
-  _server.addMessageListener('NO_DATA', function (payload) {
-    _onNoData(payload.axes || payload.axis);                    // axis - deprecated
-  });
-
-
-  function _notifyClient(evtName) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    var evtList = _events[evtName];
-    if (evtList) {
-      for (var i = 0; i < evtList.length; i++) {
-        try {
-          evtList[i].apply(window, args);
-        } catch (err) {
-          // ???
-          console.log(err.stack);
-        }
-      }
-    }
-  }
-
-
-  function formatNum(value, precision) {
-    if (undefined === null || value === null || value === '' || !isFinite(value)) return '';
-    if (precision === undefined) precision = 2;
-    var separator = ' ';
-    if (precision != -1) {
-      value = value.toFixed(precision);
-    }
-    var a = ('' + value).split('.');
-    a[0] = a[0]
-        .split('').reverse().join('')
-        .replace(/\d{3}(?=\d)/g, '$&' + separator)
-        .split('').reverse().join('');
-    if (a.length == 1) {
-      return a[0];
-    } else {
-      return (0 == parseInt(a[1], 10) ? a[0] : a.join('.'));
-    }
-  }
-
 
   function makeValue(v, unit, digits) {
     if (v == null) return '-';
@@ -239,8 +223,8 @@
     if (isNaN(v)) return '-';
     if (digits == null) digits = 2;
     var strValue = (unit && unit.config && unit.config.valueMap && (v in unit.config.valueMap))
-        ? unit.config.valueMap[v]
-        : formatNum(v, digits);
+      ? unit.config.valueMap[v]
+      : Utils.formatNum(v, digits);
     if (unit) {
       if (unit.value_prefix) strValue = unit.value_prefix + ' ' + strValue;
       if (unit.value_suffix) strValue = strValue + ' ' + unit.value_suffix;
@@ -253,15 +237,15 @@
     var metrics   = axes.metrics;
     var locations = axes.locations;
     var periods   = axes.periods;
-    var units     = axes.units || axes.dimensions;       // dimensions - deprecated
-    var axesOrder = axes.axesOrder;     // ['metrics', 'locations', 'periods'] in any order
+    var units     = axes.units;
+    var axesOrder = axes.axesOrder;                                                                 // array ['metrics', 'locations', 'periods'] in any order
 
-    if (!axesOrder) {                         // deprecated: old BI versions may have axisOrder string
-      var deprecatedOrder = axes.axisOrder;         // 'MLP', 'LMP', 'PML' ...   as z-y-x
-      axesOrder = deprecatedOrder
-          .split('')
-          .map(function(axisLetter) { return ({'M': 'metrics', 'L': 'locations', 'P': 'periods'}[axisLetter] || '?')})
-          .reverse();
+    if (axes.axesOrderCorrect) {                                                                    // currently axesOrder is inversed, for backward compatibility we have to use axesOrderCorrect as priority version
+      axesOrder = axes.axesOrderCorrect;
+    } else if (axes.axisOrder) {
+      // reverse axisOrder array, as previous bi versions sends it in reversed order: [xAxis, yAxis, zAxis]
+      // these older versions also send axisOrder so we can rely on it to check wether we need to reverse order ourselves
+      axesOrder = axesOrder.map((item, idx) => axesOrder[axesOrder.length - 1 - idx]);
     }
 
     var mh = {}, lh = {}, ph = {}, uh = {};
@@ -292,9 +276,9 @@
       '?': []
     };
 
-    result.getXs = function () { return byAxisName[axesOrder[0]] };
+    result.getZs = function () { return byAxisName[axesOrder[0]] };
     result.getYs = function () { return byAxisName[axesOrder[1]] };
-    result.getZs = function () { return byAxisName[axesOrder[2]] };
+    result.getXs = function () { return byAxisName[axesOrder[2]] };
 
     return result;
   }
@@ -394,16 +378,21 @@
       return mlpCube[mi][li][pi];
     };
 
-    _notifyClient('load', mlpCube, axes);
+    return [mlpCube, axes];
   }
 
-  function _onLoading(axes) {
-    _notifyClient('loading', _createAxes(axes));
-  }
-
-  function _onNoData(axes) {
-    _notifyClient('no-data', _createAxes(axes));
-  }
+  _server.setInterceptor('LOAD', function (payload) {
+    return _onLoad(payload.data, payload.axes);                                                     // TODO: + norms
+  })
+  _server.setInterceptor('LOADING', function (payload) {
+    return [_createAxes(payload.axes)];
+  });
+  _server.setInterceptor('NO_DATA', function (payload) {
+    return [_createAxes(payload.axes)];
+  });
+  _server.setInterceptor('LOAD_DATA', function (payload) {
+    return _onLoad(payload.data, payload.axes);                                                     // same format as for LOAD
+  });
 
 
   //
@@ -415,28 +404,17 @@
       return _server.send(messageType, opt);
     },
     on: function on(evtType, fn) {
+      var messageType = evtType.toUpperCase().replace(/-/g, '_');
+      _server.addMessageListener(messageType, fn);
       if (evtType !== 'load' && evtType !== 'loading' && evtType !== 'no-data') {
-        var messageType = evtType.toUpperCase().replace(/-/g, '_');
-        _server.addMessageListener(messageType, fn);
-        _server.send('SUBSCRIBE', { topic: evtType });                                              // register subscription
-        return bixel;
+        _server.send('SUBSCRIBE', {topic: evtType});                                                // register subscription
       }
-      var evtList = _events[evtType] || (_events[evtType] = []);
-      evtList.push(fn);
       return bixel;
     },
     off: function off(evtType, fn) {
-      if (evtType !== 'load' && evtType !== 'loading' && evtType !== 'no-data') {
-        var messageType = evtType.toUpperCase().replace(/-/g, '_');
-        _server.removeMessageListener(messageType, fn);
-        // TODO: if no more listeners: unsubscribe
-        return bixel;
-      }
-      var evtList = _events[evtType] || (_events[evtType] = []);
-      var idx = evtList.indexOf(fn);
-      if (idx !== -1) {
-        evtList.splice(idx, 1);
-      }
+      var messageType = evtType.toUpperCase().replace(/-/g, '_');
+      _server.removeMessageListener(messageType, fn);
+      // TODO: if no more listeners: UNSUBSCRIBE
       return bixel;
     },
     // helpers
