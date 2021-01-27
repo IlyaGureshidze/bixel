@@ -1,4 +1,5 @@
 ;
+// 21.1 - Added koob axes
 (function (name, definition) {
   var theModule = definition();
 
@@ -233,6 +234,160 @@
   }
 
 
+  function _createKoobAxes(subspace, data) {
+    var result = {};
+    if (!data) {                                                                                    // TODO: return miningfull functions getXs(), getYs()
+      return result;
+    }
+
+    // make measures an axis
+    var shallowClone = function(o) { var result = {}; for (var key in o) result[key] = o[key]; return result };
+    if (subspace.measures && subspace.measures.length) {
+      var dataWithMeasuresAsDimensions = [];                                                        // each entry will be splitted to several entries each with one measure
+      data.forEach(function (dataEntry) {
+        var measuresPart = {};
+        (subspace.measures || []).forEach(function (measure) {
+          measuresPart[measure.id] = dataEntry[measure.id];
+          delete dataEntry[measure.id];
+        });
+        (subspace.measures || []).forEach(function (measure) {
+          var dataEntryClone = shallowClone(dataEntry);
+          dataEntryClone.measures = measure.id;
+          dataEntryClone.val = measuresPart[measure.id];
+          dataWithMeasuresAsDimensions.push(dataEntryClone);
+        });
+      });
+      data = dataWithMeasuresAsDimensions;
+    }
+
+    var uniqueMembersByAxisId = {};
+    data.forEach(function (dataEntry) {
+      Object.keys(dataEntry).forEach(function (key) {
+        if (!(key in uniqueMembersByAxisId)) uniqueMembersByAxisId[key] = {};
+        uniqueMembersByAxisId[key][dataEntry[key]] = true;
+      })
+    });
+    for (var key in uniqueMembersByAxisId) uniqueMembersByAxisId[key] = Object.keys(uniqueMembersByAxisId[key]);
+
+    // var axes = Object.keys(uniqueMembersByAxisId).map(function(key) {
+    //   return {
+    //     title: key,
+    //     id: key,
+    //     members: uniqueMembersByAxisId[key]
+    //   };
+    // });
+
+    function makeOneLevelAxis(xyzId, cfg, data) {
+      var axisId = cfg;
+      var result = [];
+      var visited = {};
+      data.forEach(function (dataEntry) {
+        var entryId = dataEntry[axisId];
+        if (visited[entryId]) return;
+        visited[entryId] = true;
+        var search = {};
+        search[axisId] = dataEntry[axisId];
+        var title = dataEntry[axisId];
+        result.push({
+          id: entryId,
+          groupAxisId: xyzId,
+          axisId: axisId,
+          title: title,
+          search: search,
+        });
+      });
+
+      result.id = xyzId;
+      result.axisId = axisId;
+      result.depth = 1;
+
+      return result;
+    }
+
+    function makeGroupAxis(xyzId, cfg, data) {
+      var axisIds = cfg.split(',');
+      var result = [];
+      var visited = {};
+      data.forEach(function (dataEntry) {
+        var entryId = axisIds.map(key => dataEntry[key]).join(',');
+        if (visited[entryId]) return;
+        visited[entryId] = true;
+        var search = {};
+        axisIds.forEach(key => search[key] = dataEntry[key]);
+        var titles = axisIds.map(key => dataEntry[key]);
+        result.push({
+          id: entryId,
+          groupAxisId: xyzId,
+          axisId: axisIds.join(','),
+          axisIds: axisIds,
+          titles: titles,
+          title: titles.join(' / '),
+          search: search,
+        });
+      });
+
+      result.id = xyzId;
+      result.axisId = cfg;
+      result.depth = axisIds.length;
+      result.axisIds = axisIds;
+
+      return result;
+    }
+
+    function makeAxis(xyzId, cfg, data) {
+      if (!cfg) return [];                                                                          // fake axis
+      var levels = cfg.split(',');
+      if (levels.length === 1) return makeOneLevelAxis(xyzId, cfg, data);
+      return makeGroupAxis('x', subspace.xAxis, data);
+    }
+
+    var xAxis = subspace.xAxis ? makeAxis('x', subspace.xAxis, data) : [];
+    var yAxis = subspace.xAxis ? makeAxis('y', subspace.yAxis, data) : [];
+    var zAxis = subspace.zAxis ? makeAxis('z', subspace.zAxis, data) : [];
+
+    result.getXs = function() {
+      return xAxis;
+    };
+
+    result.getYs = function() {
+      return yAxis;
+    };
+
+    result.getZs = function() {
+      return zAxis;
+    }
+
+    var shallowMerge = function (o1, o2) {
+      var result = {}, key;
+      for (key in o1) result[key] = o1[key];
+      for (key in o2) result[key] = o2[key];
+      return result;
+    }
+
+    result.data = {
+      getValue: function (x, y, z) {
+        var search = {};
+        if (x && x.search) search = shallowMerge(search, x.search);
+        if (y && y.search) search = shallowMerge(search, y.search);
+        if (z && z.search) search = shallowMerge(search, z.search);
+        var dataEntry = data.find(dataEntry => {
+          for (var key in search) {
+            if (search[key] !== dataEntry[key]) return false;
+          }
+          return true;
+        });
+        if (dataEntry) {
+          return dataEntry.val;
+        } else {
+          return NaN;
+        }
+      }
+    };
+
+    return result;
+  }
+
+
   function _createAxes(axes) {
     var metrics   = axes.metrics;
     var locations = axes.locations;
@@ -297,6 +452,11 @@
   // server event listeners
   //
   function _onLoad(data, rawAxes) {
+    if (rawAxes.koob) {
+      var koobAxes = _createKoobAxes(rawAxes, data);
+      return [koobAxes.data, koobAxes];
+    }
+
     var axes = _createAxes(rawAxes);
     var ms = axes.getMetrics();
     var ls = axes.getLocations();
