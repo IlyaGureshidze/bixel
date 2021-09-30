@@ -342,7 +342,7 @@
     }
 
     var xAxis = subspace.xAxis ? makeAxis('x', subspace.xAxis, data) : [];
-    var yAxis = subspace.xAxis ? makeAxis('y', subspace.yAxis, data) : [];
+    var yAxis = subspace.yAxis ? makeAxis('y', subspace.yAxis, data) : [];
     var zAxis = subspace.zAxis ? makeAxis('z', subspace.zAxis, data) : [];
 
     result.getXs = function() {
