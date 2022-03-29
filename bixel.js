@@ -33,9 +33,9 @@
       }
       var a = ('' + value).split('.');
       a[0] = a[0]
-        .split('').reverse().join('')
-        .replace(/\d{3}(?=\d)/g, '$&' + separator)
-        .split('').reverse().join('');
+          .split('').reverse().join('')
+          .replace(/\d{3}(?=\d)/g, '$&' + separator)
+          .split('').reverse().join('');
       if (a.length == 1) {
         return a[0];
       } else {
@@ -147,6 +147,7 @@
                 msg.payload = listener.apply(window, Utils.isArray(args) ? args : [args]);          // when payload is array, interpret it as array of arguments
                 succeeded = true;                                                                   // if at least one handler is ok: send _OK
               } catch (err) {
+                console.error(err);
                 if (!succeeded) {
                   msg.payload = {
                     error: err.message
@@ -224,8 +225,8 @@
     if (isNaN(v)) return '-';
     if (digits == null) digits = 2;
     var strValue = (unit && unit.config && unit.config.valueMap && (v in unit.config.valueMap))
-      ? unit.config.valueMap[v]
-      : Utils.formatNum(v, digits);
+        ? unit.config.valueMap[v]
+        : Utils.formatNum(v, digits);
     if (unit) {
       if (unit.value_prefix) strValue = unit.value_prefix + ' ' + strValue;
       if (unit.value_suffix) strValue = strValue + ' ' + unit.value_suffix;
@@ -240,159 +241,187 @@
       return result;
     }
 
-    // make measures an axis
-    var shallowClone = function(o) { var result = {}; for (var key in o) result[key] = o[key]; return result };
-    if (subspace.measures && subspace.measures.length) {
-      var dataWithMeasuresAsDimensions = [];                                                        // each entry will be splitted to several entries each with one measure
-      data.forEach(function (dataEntry) {
-        var measuresPart = {};
-        (subspace.measures || []).forEach(function (measure) {
-          measuresPart[measure.id] = dataEntry[measure.id];
-          delete dataEntry[measure.id];
-        });
-        (subspace.measures || []).forEach(function (measure) {
-          var dataEntryClone = shallowClone(dataEntry);
-          dataEntryClone.measures = measure.id;
-          dataEntryClone.val = measuresPart[measure.id];
-          dataWithMeasuresAsDimensions.push(dataEntryClone);
-        });
-      });
-      data = dataWithMeasuresAsDimensions;
-    }
+    var xAxis = subspace.xs || [];
+    var yAxis = subspace.ys || [];
+    var zAxis = subspace.zs || [];
 
-    var uniqueMembersByAxisId = {};
-    data.forEach(function (dataEntry) {
-      Object.keys(dataEntry).forEach(function (key) {
-        if (!(key in uniqueMembersByAxisId)) uniqueMembersByAxisId[key] = {};
-        uniqueMembersByAxisId[key][dataEntry[key]] = true;
-      })
-    });
-    for (var key in uniqueMembersByAxisId) uniqueMembersByAxisId[key] = Object.keys(uniqueMembersByAxisId[key]);
-
-    // var axes = Object.keys(uniqueMembersByAxisId).map(function(key) {
-    //   return {
-    //     title: key,
-    //     id: key,
-    //     members: uniqueMembersByAxisId[key]
-    //   };
-    // });
-
-    function makeOneLevelAxis(xyzId, cfg, data) {
-      var axisId = cfg;
-      var result = [];
-      var visited = {};
-      data.forEach(function (dataEntry) {
-        var entryId = dataEntry[axisId];
-        if (visited[entryId]) return;
-        visited[entryId] = true;
-        var search = {};
-        search[axisId] = dataEntry[axisId];
-        var title = dataEntry[axisId];
-        result.push({
-          id: entryId,
-          groupAxisId: xyzId,
-          axisId: axisId,
-          title: title,
-          search: search,
-        });
-      });
-
-      result.id = xyzId;
-      result.axisId = axisId;
-      result.depth = 1;
-
-      return result;
-    }
-
-    function makeGroupAxis(xyzId, cfg, data) {
-      var axisIds = cfg.split(',');
-      var result = [];
-      var visited = {};
-      data.forEach(function (dataEntry) {
-        var entryId = axisIds.map(key => dataEntry[key]).join(',');
-        if (visited[entryId]) return;
-        visited[entryId] = true;
-        var search = {};
-        axisIds.forEach(key => search[key] = dataEntry[key]);
-        var titles = axisIds.map(key => dataEntry[key]);
-        result.push({
-          id: entryId,
-          groupAxisId: xyzId,
-          axisId: axisIds.join(','),
-          axisIds: axisIds,
-          titles: titles,
-          title: titles.join(' / '),
-          search: search,
-        });
-      });
-
-      result.id = xyzId;
-      result.axisId = cfg;
-      result.depth = axisIds.length;
-      result.axisIds = axisIds;
-
-      return result;
-    }
-
-    function makeAxis(xyzId, cfg, data) {
-      if (!cfg) return [];                                                                          // fake axis
-      var levels = cfg.split(',');
-      if (levels.length === 1) return makeOneLevelAxis(xyzId, cfg, data);
-      return makeGroupAxis('x', subspace.xAxis, data);
-    }
-
-    var xAxis = subspace.xAxis ? makeAxis('x', subspace.xAxis, data) : [];
-    var yAxis = subspace.yAxis ? makeAxis('y', subspace.yAxis, data) : [];
-    var zAxis = subspace.zAxis ? makeAxis('z', subspace.zAxis, data) : [];
-
-    result.getXs = function() {
+    result.getXs = function () {
       return xAxis;
     };
 
-    result.getYs = function() {
+    result.getYs = function () {
       return yAxis;
     };
 
-    result.getZs = function() {
+    result.getZs = function () {
       return zAxis;
     }
+    result.data = {};
 
-    var shallowMerge = function (o1, o2) {
-      var result = {}, key;
-      for (key in o1) result[key] = o1[key];
-      for (key in o2) result[key] = o2[key];
-      return result;
+    result.data.getValue = function (x, y, z) {
+      var xi = xAxis.indexOf(x); if (xi === -1) xi = xAxis.indexOf(y);
+      var yi = yAxis.indexOf(y); if (yi === -1) yi = yAxis.indexOf(x);
+      if (xi === -1 || yi === -1) {
+        return NaN;
+      }
+      var value = data[yi][xi];
+      return new Number(value);
     }
 
-    result.data = {
-      getValue: function (x, y, z) {
-        var search = {};
-        if (x && x.search) search = shallowMerge(search, x.search);
-        if (y && y.search) search = shallowMerge(search, y.search);
-        if (z && z.search) search = shallowMerge(search, z.search);
-        var dataEntry = data.find(dataEntry => {
-          for (var key in search) {
-            if (search[key] !== dataEntry[key]) return false;
-          }
-          return true;
-        });
-        if (dataEntry) {
-          return dataEntry.val;
-        } else {
-          return NaN;
-        }
-      }
-    };
+
+    // // make measures an axis
+    // var shallowClone = function(o) { var result = {}; for (var key in o) result[key] = o[key]; return result };
+    // if (subspace.measures && subspace.measures.length) {
+    //   var dataWithMeasuresAsDimensions = [];                                                        // each entry will be splitted to several entries each with one measure
+    //   data.forEach(function (dataEntry) {
+    //     var measuresPart = {};
+    //     (subspace.measures || []).forEach(function (measure) {
+    //       measuresPart[measure.id] = dataEntry[measure.id];
+    //       delete dataEntry[measure.id];
+    //     });
+    //     (subspace.measures || []).forEach(function (measure) {
+    //       var dataEntryClone = shallowClone(dataEntry);
+    //       dataEntryClone.measures = measure.id;
+    //       dataEntryClone.val = measuresPart[measure.id];
+    //       dataWithMeasuresAsDimensions.push(dataEntryClone);
+    //     });
+    //   });
+    //   data = dataWithMeasuresAsDimensions;
+    // }
+
+    // var uniqueMembersByAxisId = {};
+    // data.forEach(function (dataEntry) {
+    //   Object.keys(dataEntry).forEach(function (key) {
+    //     if (!(key in uniqueMembersByAxisId)) uniqueMembersByAxisId[key] = {};
+    //     uniqueMembersByAxisId[key][dataEntry[key]] = true;
+    //   })
+    // });
+    // for (var key in uniqueMembersByAxisId) uniqueMembersByAxisId[key] = Object.keys(uniqueMembersByAxisId[key]);
+
+    // // var axes = Object.keys(uniqueMembersByAxisId).map(function(key) {
+    // //   return {
+    // //     title: key,
+    // //     id: key,
+    // //     members: uniqueMembersByAxisId[key]
+    // //   };
+    // // });
+
+    // function makeOneLevelAxis(xyzId, cfg, data) {
+    //   var axisId = cfg;
+    //   var result = [];
+    //   var visited = {};
+    //   data.forEach(function (dataEntry) {
+    //     var entryId = dataEntry[axisId];
+    //     if (visited[entryId]) return;
+    //     visited[entryId] = true;
+    //     var search = {};
+    //     search[axisId] = dataEntry[axisId];
+    //     var title = dataEntry[axisId];
+    //     result.push({
+    //       id: entryId,
+    //       groupAxisId: xyzId,
+    //       axisId: axisId,
+    //       title: title,
+    //       search: search,
+    //     });
+    //   });
+    //
+    //   result.id = xyzId;
+    //   result.axisId = axisId;
+    //   result.depth = 1;
+    //
+    //   return result;
+    // }
+
+    // function makeGroupAxis(xyzId, cfg, data) {
+    //   var axisIds = cfg.split(',');
+    //   var result = [];
+    //   var visited = {};
+    //   data.forEach(function (dataEntry) {
+    //     var entryId = axisIds.map(key => dataEntry[key]).join(',');
+    //     if (visited[entryId]) return;
+    //     visited[entryId] = true;
+    //     var search = {};
+    //     axisIds.forEach(key => search[key] = dataEntry[key]);
+    //     var titles = axisIds.map(key => dataEntry[key]);
+    //     result.push({
+    //       id: entryId,
+    //       groupAxisId: xyzId,
+    //       axisId: axisIds.join(','),
+    //       axisIds: axisIds,
+    //       titles: titles,
+    //       title: titles.join(' / '),
+    //       search: search,
+    //     });
+    //   });
+    //
+    //   result.id = xyzId;
+    //   result.axisId = cfg;
+    //   result.depth = axisIds.length;
+    //   result.axisIds = axisIds;
+    //
+    //   return result;
+    // }
+
+    // function makeAxis(xyzId, cfg, data) {
+    //   if (!cfg) return [];                                                                          // fake axis
+    //   var levels = cfg.split(',');
+    //   if (levels.length === 1) return makeOneLevelAxis(xyzId, cfg, data);
+    //   return makeGroupAxis('x', subspace.xAxis, data);
+    // }
+    //
+    // var xAxis = subspace.xAxis ? makeAxis('x', subspace.xAxis, data) : [];
+    // var yAxis = subspace.xAxis ? makeAxis('y', subspace.yAxis, data) : [];
+    // var zAxis = subspace.zAxis ? makeAxis('z', subspace.zAxis, data) : [];
+    //
+    // result.getXs = function() {
+    //   return xAxis;
+    // };
+    //
+    // result.getYs = function() {
+    //   return yAxis;
+    // };
+    //
+    // result.getZs = function() {
+    //   return zAxis;
+    // }
+
+    // var shallowMerge = function (o1, o2) {
+    //   var result = {}, key;
+    //   for (key in o1) result[key] = o1[key];
+    //   for (key in o2) result[key] = o2[key];
+    //   return result;
+    // }
+
+    // result.data = {
+    //   getValue: function (x, y, z) {
+    //     var search = {};
+    //     if (x && x.search) search = shallowMerge(search, x.search);
+    //     if (y && y.search) search = shallowMerge(search, y.search);
+    //     if (z && z.search) search = shallowMerge(search, z.search);
+    //     var dataEntry = data.find(dataEntry => {
+    //       for (var key in search) {
+    //         if (search[key] !== dataEntry[key]) return false;
+    //       }
+    //       return true;
+    //     });
+    //     if (dataEntry) {
+    //       return dataEntry.val;
+    //     } else {
+    //       return NaN;
+    //     }
+    //   }
+    // };
 
     return result;
   }
 
 
   function _createAxes(axes) {
-    var metrics   = axes.metrics;
+    var metrics = axes.metrics;
     var locations = axes.locations;
-    var periods   = axes.periods;
-    var units     = axes.units;
+    var periods = axes.periods;
+    var units = axes.units;
     var axesOrder = axes.axesOrder;                                                                 // array ['metrics', 'locations', 'periods'] in any order
 
     if (axes.axesOrderCorrect) {                                                                    // currently axesOrder is inversed, for backward compatibility we have to use axesOrderCorrect as priority version
@@ -404,25 +433,53 @@
     }
 
     var mh = {}, lh = {}, ph = {}, uh = {};
-    metrics  .forEach(function (m) { mh[m.id] = m });
-    locations.forEach(function (l) { lh[l.id] = l });
-    periods  .forEach(function (p) { ph[p.id] = p });
-    units    .forEach(function (u) { uh[u.id] = u });
+    metrics.forEach(function (m) {
+      mh[m.id] = m
+    });
+    locations.forEach(function (l) {
+      lh[l.id] = l
+    });
+    periods.forEach(function (p) {
+      ph[p.id] = p
+    });
+    units.forEach(function (u) {
+      uh[u.id] = u
+    });
 
     var result = {};
 
-    result.getMetrics    = function ()   { return metrics;        };
-    result.getLocations  = function ()   { return locations;      };
-    result.getPeriods    = function ()   { return periods;        };
-    result.getUnits      = function ()   { return units;          };
+    result.getMetrics = function () {
+      return metrics;
+    };
+    result.getLocations = function () {
+      return locations;
+    };
+    result.getPeriods = function () {
+      return periods;
+    };
+    result.getUnits = function () {
+      return units;
+    };
 
-    result.getMetric     = function (id) { return mh[id] || null; };
-    result.getLocation   = function (id) { return lh[id] || null; };
-    result.getPeriod     = function (id) { return ph[id] || null; };
-    result.getUnit       = function (id) { return uh[id] || null; };
+    result.getMetric = function (id) {
+      return mh[id] || null;
+    };
+    result.getLocation = function (id) {
+      return lh[id] || null;
+    };
+    result.getPeriod = function (id) {
+      return ph[id] || null;
+    };
+    result.getUnit = function (id) {
+      return uh[id] || null;
+    };
 
-    var _getUnitIdByM = function (m) { return ('unit_id' in m) ? m.unit_id : m.dim_id };
-    result.getUnitByMetric = function (m) { return result.getUnit(_getUnitIdByM(m)) };
+    var _getUnitIdByM = function (m) {
+      return ('unit_id' in m) ? m.unit_id : m.dim_id
+    };
+    result.getUnitByMetric = function (m) {
+      return result.getUnit(_getUnitIdByM(m))
+    };
 
     var byAxisName = {
       'metrics': metrics,
@@ -431,9 +488,15 @@
       '?': []
     };
 
-    result.getZs = function () { return byAxisName[axesOrder[0]] };
-    result.getYs = function () { return byAxisName[axesOrder[1]] };
-    result.getXs = function () { return byAxisName[axesOrder[2]] };
+    result.getZs = function () {
+      return byAxisName[axesOrder[0]]
+    };
+    result.getYs = function () {
+      return byAxisName[axesOrder[1]]
+    };
+    result.getXs = function () {
+      return byAxisName[axesOrder[2]]
+    };
 
     return result;
   }
@@ -481,10 +544,10 @@
 
       // deprecated
       if (value == null) {    // null or undefined
-        value  = dataItem.value;
+        value = dataItem.value;
       }
 
-      h[pid] = _createNAL(value, axes.getMetric(mid),  axes.getLocation(lid), axes.getPeriod(pid));
+      h[pid] = _createNAL(value, axes.getMetric(mid), axes.getLocation(lid), axes.getPeriod(pid));
     });
 
     var _getItemByMLP = function (m, l, p) {
@@ -498,7 +561,7 @@
     var mlpCube = ms.map(function (m) {
       return ls.map(function (l) {
         return ps.map(function (p) {
-          var nal = _getItemByMLP(m, l, p) ;
+          var nal = _getItemByMLP(m, l, p);
           if (nal === null) {
             nal = _createNAL(null, m, l, p);
           }
@@ -507,15 +570,29 @@
       });
     });
 
-    var _isM = function (e) {  return ms.indexOf(e) !== -1  };
-    var _isL = function (e) {  return ls.indexOf(e) !== -1  };
-    var _isP = function (e) {  return ps.indexOf(e) !== -1  };
+    var _isM = function (e) {
+      return ms.indexOf(e) !== -1
+    };
+    var _isL = function (e) {
+      return ls.indexOf(e) !== -1
+    };
+    var _isP = function (e) {
+      return ps.indexOf(e) !== -1
+    };
 
-    var _findE = function (isE, z, y, x) { return isE(z) && z || isE(y) && y || isE(x) && x || null };
+    var _findE = function (isE, z, y, x) {
+      return isE(z) && z || isE(y) && y || isE(x) && x || null
+    };
 
-    var _findM = function (z, y, x) { return _findE(_isM, z, y, x) };
-    var _findL = function (z, y, x) { return _findE(_isL, z, y, x) };
-    var _findP = function (z, y, x) { return _findE(_isP, z, y, x) };
+    var _findM = function (z, y, x) {
+      return _findE(_isM, z, y, x)
+    };
+    var _findL = function (z, y, x) {
+      return _findE(_isL, z, y, x)
+    };
+    var _findP = function (z, y, x) {
+      return _findE(_isP, z, y, x)
+    };
 
     // TODO: skip some values
     mlpCube.getValue = function (z, y, x) {
