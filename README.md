@@ -32,7 +32,7 @@ Config (optional):
 - `locationsCount: string` - number of requested locations
 - `metricsCount: string` - number of requested metrics
 - `periodsCount: string` - number of requested periods
-- `xsCount: string` number of entities of x-axis (e.g. periods, locations, metrics - one projected on x axis)
+- `xsCount: string` number of entities of x-axis (e.g. periods, locations, metrics - one projected on x-axis)
 - `ysCount: string` number of entities of y-axis
 - `zsCount: string` number of entities of z-axis
 - `saveAbilities: string[]` - array of file extensions that vizel can be saved to
@@ -51,6 +51,7 @@ bixel.init({periodsCount:1})
 
 ## bixel.on
 subscribe on event
+(receive event from client)
 ```
 bixel.on(eventName, callbackFunction)
 ```
@@ -63,7 +64,34 @@ eventName is string and can be one of:
    no selection in ui panes or no data on server side. A callback will have
    `Axis` object as the only argument
 - `save` - when user click on save button
+- `url` - will receive this event when url changed. It provides callback argument as current model of UrlState service
 
+## bixel.invoke
+trigger the event manually (send event to client).
+
+Available keys for event:
+- `LOAD` - default event for receiving data
+- `LOADING` - event for loading state of dashlet
+- `NO_DATA` - event for state of no data from server
+- `LOAD_DATA` - get raw data from server
+- `CLICK_DATA_POINT` - click on data point
+
+
+Examples:
+```
+bixel.invoke('LOAD_DATA', {
+  metrics: [34, 56, 61],
+  locations: [19001],
+  periods: [202001010000004]
+}).then(function(data) {
+ console.log(data);
+}
+```
+``` 
+$(document).on('click', '[data-yId]', function(event){
+  bixel.invoke('CLICK_DATA_POINT', { x_id: X.id, y_id: event.target.getAttribute('data-yId'), z_id: Z.id, event: {pageX: event.pageX, pageY: event.pageY } });
+});
+```
 ## Axis object
 provides methods:
 - `axis.getMetrics()` - returns javascript array of `Metric` objects. This array
@@ -75,10 +103,18 @@ provides methods:
 - `axis.getUnits()` returns javascript array of `Unit` objects. It will
   contain all the units linked with metrics
 
+
+- `axis.getXs()` - returns javascript array of entities of x-axis. This array
+    will be maximum of `xsCount` length if specified in `bixel.init` method
+- `axis.getYs()` - returns javascript array of entities of y-axis. This array
+  will be maximum of `ysCount` length if specified in `bixel.init` method
+- `axis.getZs()` - returns javascript array of entities of z-axis. This array
+  will be maximum of `zsCount` length if specified in `bixel.init` method
+
 ## Data object
 provides methods:
 - `data.getValue(z, y, x)` - returns `DataItem` object. Arguments `z`, `y` and
-   `x` are  `Metric`, `Location` and `Period`  objects from Axis in any order.
+   `x` are  `Metric`, `Location` and `Period` objects from Axis in any order (or elements of zs, ys, xs).
 
 ## DataItem
 Generally a javascript `Number` object with overridden `toString` method.
@@ -91,7 +127,12 @@ bixel.on('load', function(data, axis) {
   var location = axis.getLocations()[0]; // and first location
   var period = axis.getPeriods()[0];     // and first period
 
+  var x = axis.getXs()[0];     // first element of X axis
+  var y = axis.getYs()[0];     // and first element of Y axis
+  var z = axis.getZs()[0];     // and first element on Z axis (can be undefined)
+
   var dataValue = data.getValue(metric, location, period);
+  // dataValue = data.getValue(z, y, x)
 
   var numValue = dataValue.valueOf();    // ex: number, 1000000
   var strValue = dataValue.toString()    // ex: string, '$ 1 000 000 us dollars'
@@ -117,3 +158,14 @@ javascript object, has fields:
 - `id`:string - unique id of period
 - `title`:string - title of period
 - `color`:string - color for this period according to dash configuration
+
+## Entity object (any element from ys, xs, zs)
+javascript object of IEntity type, has fields:
+- `id`:string - unique id of entity
+- `title`:string - title of entity
+- `color`:string - color for this entity according to dash configuration
+- `axisId`?: string - id of elements on axis ("measures", "locations", "age" (some dimension id));
+- `ids`?: Array<string | number> - array of ids of elements on axis ;
+- `titles`?: string[] - array of titles of elements on axis ;
+- `axisIds`?: string[] - array of axisIds of elements on axis ;
+- `config`?: any - usual js object to hold any info you might need;
